@@ -33,8 +33,17 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Restore
         run: dotnet restore
+      - name: Build library
+        run: dotnet build Anakin-Analytics/Anakin-Analytics.csproj --configuration Release --no-restore
+
+      - name: Compute package version
+        run: echo "PACKAGE_VERSION=$(date -u +%Y.%m.%d).${{ github.run_number }}" >> $GITHUB_ENV
+
       - name: Pack library
-        run: dotnet pack Anakin-Analytics/Anakin-Analytics.csproj --configuration Release --output ./artifacts --no-build
+        run: |
+          echo "Packing version: $PACKAGE_VERSION"
+          dotnet pack Anakin-Analytics/Anakin-Analytics.csproj --configuration Release --output ./artifacts -p:PackageVersion=$PACKAGE_VERSION
+
       - name: Publish NuGet package
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
