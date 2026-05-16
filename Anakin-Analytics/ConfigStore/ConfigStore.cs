@@ -19,10 +19,19 @@ namespace AnakinAnalytics
         private static readonly Dictionary<string, ConfigStore> configs = new Dictionary<string, ConfigStore>(StringComparer.OrdinalIgnoreCase);
         private static bool configsLoaded = false;
 
+        /// <summary>
+        /// Dictionary of booster words and their scalar values (e.g. "very" => 0.293).
+        /// </summary>
         public Dictionary<string, double> BoosterDict { get; private set; }
 
+        /// <summary>
+        /// Array of negation tokens used to invert or reduce sentiment (e.g. "not", "never").
+        /// </summary>
         public string[] Negations { get; private set; }
 
+        /// <summary>
+        /// Special-case idioms mapped to a sentiment value (e.g. "the bomb" => 3.0).
+        /// </summary>
         public Dictionary<string, double> SpecialCaseIdioms { get; private set; }
 
         // private default ctor used when loading from XML roots

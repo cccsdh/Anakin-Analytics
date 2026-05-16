@@ -603,8 +603,9 @@ namespace AnakinAnalytics
         /// <summary>
         /// Return metrics for positive, negative and neutral sentiment based on the input text.
         /// </summary>
-        /// <param name="input"></param>
-        /// <returns></returns>
+        /// <param name="input">The input text to analyze.</param>
+        /// <param name="languageCode">Language code in writing style "language-country" (e.g. "en-gb", "en-us"). Default is "en-gb".</param>
+        /// <returns>SentimentAnalysisResults containing Positive, Negative, Neutral and Compound scores.</returns>
         public SentimentAnalysisResults PolarityScores(string input, string languageCode = "en-gb")
         {
             // apply language-specific config
