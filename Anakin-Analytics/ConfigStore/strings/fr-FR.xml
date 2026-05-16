@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<strings>
+  <booster-words>
+    <booster sign="BIncr">absolument</booster>
+    <booster sign="BIncr">incroyablement</booster>
+    <booster sign="BIncr">incroyable</booster>
+    <booster sign="BIncr">extrêmement</booster>
+    <booster sign="BIncr">totalement</booster>
+    <booster sign="BIncr">entièrement</booster>
+    <booster sign="BIncr">fortement</booster>
+    <booster sign="BIncr">vraiment</booster>
+    <booster sign="BIncr">particulièrement</booster>
+    <booster sign="BIncr">très</booster>
+    <booster sign="BDecr">presque</booster>
+    <booster sign="BDecr">à peine</booster>
+    <booster sign="BDecr">faiblement</booster>
+    <booster sign="BDecr">un peu</booster>
+    <booster sign="BDecr">quelque peu</booster>
+    <booster sign="BDecr">moins</booster>
+  </booster-words>
+
+  <negations>
+    <negation>ne...pas</negation>
+    <negation>pas</negation>
+    <negation>jamais</negation>
+    <negation>rien</negation>
+    <negation>personne</negation>
+    <negation>aucun</negation>
+    <negation>aucune</negation>
+    <negation>ni</negation>
+    <negation>nulle part</negation>
+    <negation>sans</negation>
+    <negation>ne</negation>
+    <negation>nul</negation>
+  </negations>
+
+  <special-case-idioms>
+    <idiom value="3">la bombe</idiom>
+    <idiom value="2">un jeu d'enfant</idiom>
+    <idiom value="1.5">au top</idiom>
+    <idiom value="-2">ouais sure</idiom>
+    <idiom value="-1.5">baiser fatal</idiom>
+    <idiom value="-2">vivre au jour le jour</idiom>
+  </special-case-idioms>
+</strings>

@@ -1,41 +1,29 @@
-# VaderSharp. The best sentiment analysis tool. In C#.
+# Anakin-Analytics
 
-"VADER (Valence Aware Dictionary and sEntiment Reasoner) is a lexicon and rule-based sentiment analysis tool that is specifically attuned to sentiments expressed in social media."
-
-Previously VADER was only available in python (https://github.com/cjhutto/vaderSentiment). I wanted to use it in C# so ported it over.
+Anakin-Analytics is a fork of `codingupastorm/vadersharp`, updated to target .NET 10 and extended to support multiple language sentiment configuration files simultaneously.
 
 # Getting Started
 
-VaderSharp supports:
+Anakin-Analytics provides a .NET 10-ready implementation of the VADER sentiment analysis algorithm and adds support for loading and using multiple language sentiment configuration files at runtime.
 
-- .NET Core
-- .NET Framework 3.5 and above
-- Mono & Xamarin
-- UWP
+Supported highlights:
 
-To install VaderSharp, run the following command in the Package Manager Console:
-
-```
-Install-Package CodingUpAStorm.VaderSharp
-```
+- Targets .NET 10
+- Load and use multiple language sentiment config files simultaneously
+- Lexicon and rule-based sentiment analysis tuned for social media text
+- Cross-platform (.NET 10)
 
 # Usage
 
-Import the package at the top of the page:
+Import the library namespace and create a `SentimentIntensityAnalyzer` instance, then call `PolarityScores`:
 
 ```c#
-using VaderSharp;
-```
+using AnakinAnalytics;
 
-Then just initialize an instance of SentimentIntensityAnalyzer and call it's PolarityScores method:
-
-```c#
-SentimentIntensityAnalyzer analyzer = new SentimentIntensityAnalyzer();
-
+var analyzer = new SentimentIntensityAnalyzer();
 var results = analyzer.PolarityScores("Wow, this package is amazingly easy to use");
 
 Console.WriteLine("Positive score: " + results.Positive);
 Console.WriteLine("Negative score: " + results.Negative);
 Console.WriteLine("Neutral score: " + results.Neutral);
 Console.WriteLine("Compound score: " + results.Compound);
-```
