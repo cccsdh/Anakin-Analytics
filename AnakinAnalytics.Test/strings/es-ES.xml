@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<strings>
+  <booster-words>
+    <booster sign="BIncr">absolutamente</booster>
+    <booster sign="BIncr">increíblemente</booster>
+    <booster sign="BIncr">extremadamente</booster>
+    <booster sign="BIncr">totalmente</booster>
+    <booster sign="BIncr">completamente</booster>
+    <booster sign="BIncr">muy</booster>
+    <booster sign="BIncr">realmente</booster>
+    <booster sign="BIncr">particularmente</booster>
+    <booster sign="BDecr">casi</booster>
+    <booster sign="BDecr">apenas</booster>
+    <booster sign="BDecr">poco</booster>
+    <booster sign="BDecr">ligeramente</booster>
+    <booster sign="BDecr">algo</booster>
+  </booster-words>
+
+  <negations>
+    <negation>no</negation>
+    <negation>nunca</negation>
+    <negation>ninguno</negation>
+    <negation>ninguna</negation>
+    <negation>nadie</negation>
+    <negation>nada</negation>
+    <negation>jamás</negation>
+    <negation>ni</negation>
+    <negation>sin</negation>
+    <negation>en ningún lugar</negation>
+  </negations>
+
+  <special-case-idioms>
+    <idiom value="3">la bomba</idiom>
+    <idiom value="2">pan comido</idiom>
+    <idiom value="1.5">de puta madre</idiom>
+    <idiom value="-2">sí claro</idiom>
+    <idiom value="-1.5">beso de la muerte</idiom>
+    <idiom value="-2">mano a boca</idiom>
+  </special-case-idioms>
+</strings>

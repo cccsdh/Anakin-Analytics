@@ -18,54 +18,585 @@ namespace AnakinAnalytics
         private const double QuesIncrSmall = 0.18;
         private const double QuesIncrLarge = 0.96;
 
-        // Lazy-loaded lexicon to avoid heavy work in a type initializer and to make failures explicit.
-        private static readonly Lazy<Dictionary<string, double>> LexiconLazy =
-            new Lazy<Dictionary<string, double>>(LoadLexicon, isThreadSafe: true);
+        // Cache lexicons per language code. Keys are normalized language codes (lowercase).
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Lazy<Dictionary<string, double>>> LexiconCache
+            = new System.Collections.Concurrent.ConcurrentDictionary<string, Lazy<Dictionary<string, double>>>(System.StringComparer.OrdinalIgnoreCase);
 
-        private static Dictionary<string, double> Lexicon => LexiconLazy.Value;
+        private static Dictionary<string, double> GetLexiconForLanguage(string languageCode)
+        {
+            if (string.IsNullOrEmpty(languageCode))
+                languageCode = "en-gb";
 
-        private static Dictionary<string, double> LoadLexicon()
+            var normalized = languageCode.ToLowerInvariant();
+
+            var lazy = LexiconCache.GetOrAdd(normalized, _ => new Lazy<Dictionary<string, double>>(() => LoadLexicon(normalized), isThreadSafe: true));
+            return lazy.Value;
+        }
+
+        // Search for a file in immediate subdirectories (up to maxDepth levels). Returns full path if found; otherwise null.
+        private static string FindFileInSubfolders(string startDir, string fileName, int maxDepth = 1)
+        {
+            try
+            {
+                if (maxDepth < 1)
+                    return null;
+
+                var dirs = new Queue<(string path, int depth)>();
+                dirs.Enqueue((startDir, 0));
+
+                while (dirs.Count > 0)
+                {
+                    var (path, depth) = dirs.Dequeue();
+                    try
+                    {
+                        foreach (var file in Directory.GetFiles(path, fileName))
+                        {
+                            if (File.Exists(file))
+                                return file;
+                        }
+                        if (depth < maxDepth)
+                        {
+                            foreach (var dir in Directory.GetDirectories(path))
+                            {
+                                dirs.Enqueue((dir, depth + 1));
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // ignore IO errors for individual dirs
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+            return null;
+        }
+
+        // Write a lexicon dictionary to a file in the canonical format (token \t score)
+        private static void WriteLexiconToFile(Dictionary<string, double> lexicon, string targetFilePath)
+        {
+            using (var writer = new StreamWriter(targetFilePath, false, System.Text.Encoding.UTF8))
+            {
+                foreach (var kv in lexicon)
+                {
+                    writer.WriteLine(kv.Key + "\t" + kv.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                }
+            }
+        }
+
+        // Read all lines from a stream
+        private static List<string> ReadLinesFromStream(Stream stream)
+        {
+            var lines = new List<string>();
+            using (var reader = new StreamReader(stream))
+            {
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    lines.Add(line);
+                }
+            }
+            return lines;
+        }
+
+        // Load lexicon dictionary from pre-read lines (preserves parsing behavior of LoadLexiconFromStream)
+        private static Dictionary<string, double> LoadLexiconFromLines(List<string> lines)
+        {
+            var dic = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (var line in lines)
+            {
+                var trimmed = line?.Trim();
+                if (string.IsNullOrEmpty(trimmed))
+                    continue;
+
+                var parts = trimmed.Split('\t');
+                if (parts.Length < 2)
+                    continue;
+
+                if (double.TryParse(parts[1], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var val))
+                {
+                    if (!dic.ContainsKey(parts[0]))
+                        dic.Add(parts[0], val);
+                }
+            }
+            return dic;
+        }
+
+        // Create transformed lexicon file from a list of source lines, preserving remainder of each line
+        private static void CreateTransformedLexiconFromLines(List<string> lines, string targetFilePath, Dictionary<string, string> map)
+        {
+            using (var writer = new StreamWriter(targetFilePath, false, System.Text.Encoding.UTF8))
+            {
+                foreach (var line in lines)
+                {
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        writer.WriteLine(line);
+                        continue;
+                    }
+
+                    var parts = line.Split('\t', 2);
+                    var token = parts[0];
+                    var rest = parts.Length > 1 ? "\t" + parts[1] : string.Empty;
+
+                    if (System.Text.RegularExpressions.Regex.IsMatch(token, "^\\p{L}"))
+                    {
+                        var newToken = token;
+                        foreach (var m in map)
+                        {
+                            try
+                            {
+                                var pattern = "\\b" + System.Text.RegularExpressions.Regex.Escape(m.Key) + "\\b";
+                                if (System.Text.RegularExpressions.Regex.IsMatch(newToken, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                                {
+                                    newToken = System.Text.RegularExpressions.Regex.Replace(newToken, pattern, m.Value, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                }
+                            }
+                            catch
+                            {
+                                // ignore regex errors
+                            }
+                        }
+
+                        writer.WriteLine(newToken + rest);
+                    }
+                    else
+                    {
+                        writer.WriteLine(line);
+                    }
+                }
+            }
+        }
+
+        // Search for a file by walking up the directory tree from startDir. Returns full path if found, otherwise null.
+        private static string FindFileUpwards(string startDir, string fileName)
+        {
+            try
+            {
+                var dir = new DirectoryInfo(startDir);
+                while (dir != null)
+                {
+                    var candidate = Path.Combine(dir.FullName, fileName);
+                    if (File.Exists(candidate))
+                        return candidate;
+                    dir = dir.Parent;
+                }
+            }
+            catch
+            {
+                // ignore IO errors
+            }
+            return null;
+        }
+
+        private static Dictionary<string, double> LoadLexicon(string languageCode)
         {
             var assembly = typeof(SentimentIntensityAnalyzer).Assembly;
 
-            // Find the actual resource name instead of assuming a constructed name. This is robust
-            // to default namespace changes or file placement in folders.
-            var resourceName = assembly.GetManifestResourceNames()
-                .FirstOrDefault(n => n.EndsWith("vader_lexicon.txt", StringComparison.OrdinalIgnoreCase));
+            // Normalize and compute assembly folder early so we can write transformed files when needed
+            var normalizedLower = (languageCode ?? string.Empty).ToLowerInvariant();
+            var assemblyFolder = Path.GetDirectoryName(assembly.Location) ?? AppDomain.CurrentDomain.BaseDirectory ?? Directory.GetCurrentDirectory();
 
-            if (resourceName == null)
-                throw new InvalidOperationException("Embedded resource 'vader_lexicon.txt' not found in assembly. Available resources: "
-                    + string.Join(", ", assembly.GetManifestResourceNames()));
+            // candidates: exact languageCode, language-only (en from en-gb), default (no suffix)
+            var candidates = new List<string> { languageCode };
+            var langPart = languageCode.Split('-')[0];
+            if (!string.Equals(langPart, languageCode, System.StringComparison.OrdinalIgnoreCase))
+                candidates.Add(langPart);
 
-            using (var stream = assembly.GetManifestResourceStream(resourceName))
+            // try embedded resources first
+            foreach (var cand in candidates)
             {
-                if (stream == null)
-                    throw new InvalidOperationException($"Resource stream '{resourceName}' could not be opened.");
-
-                var dic = new Dictionary<string, double>();
-                using (var reader = new StreamReader(stream))
+                var resName = assembly.GetManifestResourceNames()
+                    .FirstOrDefault(n => n.EndsWith($"vader_lexicon_{cand}.txt", System.StringComparison.OrdinalIgnoreCase));
+                if (resName != null)
                 {
-                    string line;
-                    while ((line = reader.ReadLine()) != null)
+                    using (var stream = assembly.GetManifestResourceStream(resName))
                     {
-                        var trimmed = line.Trim();
-                        if (string.IsNullOrEmpty(trimmed))
-                            continue;
-
-                        var parts = trimmed.Split('\t');
-                        if (parts.Length < 2)
-                            continue;
-
-                        // parse using invariant culture to avoid locale issues
-                        if (double.TryParse(parts[1], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var val))
+                        if (stream != null)
                         {
-                            if (!dic.ContainsKey(parts[0]))
-                                dic.Add(parts[0], val);
+                            var loaded = LoadLexiconFromStream(stream);
+                            var transformed = TransformLexiconForUS(loaded, languageCode);
+
+                            // If en-us was requested, persist transformed lexicon to disk so we don't need to transform again
+                            if (normalizedLower.StartsWith("en-us", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var targetName = $"vader_lexicon_{normalizedLower}.txt";
+                                var targetPath = Path.Combine(assemblyFolder, targetName);
+                                if (!File.Exists(targetPath))
+                                {
+                                    try
+                                    {
+                                        WriteLexiconToFile(transformed, targetPath);
+                                    }
+                                    catch
+                                    {
+                                        try
+                                        {
+                                            var alt = Path.Combine(Directory.GetCurrentDirectory(), targetName);
+                                            WriteLexiconToFile(transformed, alt);
+                                        }
+                                        catch
+                                        {
+                                            // ignore write failures
+                                        }
+                                    }
+
+        
+                                }
+                            }
+
+                            return transformed;
+                        }
+                    }
+                }
+            }
+
+            // try default resource name
+            var defaultRes = assembly.GetManifestResourceNames()
+                .FirstOrDefault(n => n.EndsWith("vader_lexicon.txt", System.StringComparison.OrdinalIgnoreCase));
+            if (defaultRes != null)
+            {
+                using (var stream = assembly.GetManifestResourceStream(defaultRes))
+                {
+                    if (stream != null)
+                    {
+                        // read source lines so we can both parse and optionally write a preserved transformed file
+                        var srcLines = ReadLinesFromStream(stream);
+                        var loaded = LoadLexiconFromLines(srcLines);
+                        var transformed = TransformLexiconForUS(loaded, languageCode);
+
+                        if (normalizedLower.StartsWith("en-us", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var map = GetGbToUsMap();
+                            var targetName = $"vader_lexicon_{normalizedLower}.txt";
+                            var targetPath = Path.Combine(assemblyFolder, targetName);
+                            if (!File.Exists(targetPath))
+                            {
+                                try
+                                {
+                                    CreateTransformedLexiconFromLines(srcLines, targetPath, map);
+                                }
+                                catch
+                                {
+                                    try
+                                    {
+                                        var alt = Path.Combine(Directory.GetCurrentDirectory(), targetName);
+                                        CreateTransformedLexiconFromLines(srcLines, alt, map);
+                                    }
+                                    catch
+                                    {
+                                        // ignore write failures
+                                    }
+                                }
+                            }
+                        }
+
+                        return transformed;
+                    }
+                }
+            }
+
+            // fallback to files next to assembly or current directory
+            // assemblyFolder already computed above
+            foreach (var cand in candidates)
+            {
+                var fileName = $"vader_lexicon_{cand}.txt";
+                var filePath = Path.Combine(assemblyFolder, fileName);
+                if (!File.Exists(filePath))
+                    filePath = Path.Combine(Directory.GetCurrentDirectory(), fileName);
+                // also check common subfolders next to the assembly (e.g. 'Anakin-Analytics' subfolder)
+                if (!File.Exists(filePath))
+                {
+                    var found = FindFileInSubfolders(assemblyFolder, fileName, maxDepth: 2);
+                    if (!string.IsNullOrEmpty(found))
+                        filePath = found;
+                }
+                if (File.Exists(filePath))
+                {
+                    // If en-us requested, prefer to create a preserved transformed file on disk then read it.
+                    if (normalizedLower.StartsWith("en-us", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var map = GetGbToUsMap();
+                        var targetName = $"vader_lexicon_{normalizedLower}.txt";
+                        var targetPath = Path.Combine(assemblyFolder, targetName);
+                        if (!File.Exists(targetPath))
+                        {
+                            try
+                            {
+                                CreateTransformedLexiconFile(filePath, targetPath, map);
+                            }
+                            catch
+                            {
+                                try
+                                {
+                                    var alt = Path.Combine(Directory.GetCurrentDirectory(), targetName);
+                                    CreateTransformedLexiconFile(filePath, alt, map);
+                                }
+                                catch
+                                {
+                                    // ignore write failures
+                                }
+                            }
+                        }
+
+                        if (File.Exists(targetPath))
+                        {
+                            using (var stream = File.OpenRead(targetPath))
+                            {
+                                return LoadLexiconFromStream(stream);
+                            }
+                        }
+                        // fallback to loading the original file and transforming in-memory
+                    }
+
+                    using (var stream = File.OpenRead(filePath))
+                    {
+                        var loaded = LoadLexiconFromStream(stream);
+                        var transformed = TransformLexiconForUS(loaded, languageCode);
+                        return transformed;
+                    }
+                }
+            }
+
+            // try default file name
+            var defaultFile = Path.Combine(assemblyFolder, "vader_lexicon.txt");
+            if (!File.Exists(defaultFile))
+                defaultFile = Path.Combine(Directory.GetCurrentDirectory(), "vader_lexicon.txt");
+            if (File.Exists(defaultFile))
+            {
+                // read source file lines so we can preserve full line content when transforming
+                var srcLines = File.ReadAllLines(defaultFile).ToList();
+                var loaded = LoadLexiconFromLines(srcLines);
+                var transformed = TransformLexiconForUS(loaded, languageCode);
+
+                if (normalizedLower.StartsWith("en-us", StringComparison.OrdinalIgnoreCase))
+                {
+                    var map = GetGbToUsMap();
+                    var targetName = $"vader_lexicon_{normalizedLower}.txt";
+                    var targetPath = Path.Combine(assemblyFolder, targetName);
+                    if (!File.Exists(targetPath))
+                    {
+                        try
+                        {
+                            CreateTransformedLexiconFromLines(srcLines, targetPath, map);
+                        }
+                        catch
+                        {
+                            try
+                            {
+                                var alt = Path.Combine(Directory.GetCurrentDirectory(), targetName);
+                                CreateTransformedLexiconFromLines(srcLines, alt, map);
+                            }
+                            catch
+                            {
+                                // ignore write failures
+                            }
                         }
                     }
                 }
 
-                return dic;
+                return transformed;
+            }
+
+            // If en-us was requested but no en-us lexicon exists, attempt to create one from a GB or default lexicon
+            if (normalizedLower.StartsWith("en-us", StringComparison.OrdinalIgnoreCase))
+            {
+                var map = GetGbToUsMap();
+                var sourceFiles = new[] { "vader_lexicon_en-gb.txt", "vader_lexicon_en.txt", "vader_lexicon.txt" };
+                foreach (var srcName in sourceFiles)
+                {
+                    var srcPath = Path.Combine(assemblyFolder, srcName);
+                    if (!File.Exists(srcPath))
+                        srcPath = Path.Combine(Directory.GetCurrentDirectory(), srcName);
+                    // try to find file in parent directories or in subfolders next to the assembly
+                    if (!File.Exists(srcPath))
+                    {
+                        var found = FindFileUpwards(assemblyFolder, srcName);
+                        if (!string.IsNullOrEmpty(found))
+                            srcPath = found;
+                    }
+                    if (!File.Exists(srcPath))
+                    {
+                        var foundSub = FindFileInSubfolders(assemblyFolder, srcName, maxDepth: 2);
+                        if (!string.IsNullOrEmpty(foundSub))
+                            srcPath = foundSub;
+                    }
+                    if (File.Exists(srcPath))
+                    {
+                        var targetName = $"vader_lexicon_{normalizedLower}.txt";
+                        var targetPath = Path.Combine(assemblyFolder, targetName);
+                        try
+                        {
+                            CreateTransformedLexiconFile(srcPath, targetPath, map);
+                            if (File.Exists(targetPath))
+                            {
+                                using (var stream = File.OpenRead(targetPath))
+                                {
+                                    return LoadLexiconFromStream(stream);
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // ignore write failures and continue trying other sources
+                        }
+                    }
+                }
+            }
+
+            throw new InvalidOperationException("vader_lexicon for language '" + languageCode + "' not found as an embedded resource or as a file next to the assembly.");
+        }
+
+        private static Dictionary<string, double> LoadLexiconFromStream(Stream stream)
+        {
+            var dic = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            using (var reader = new StreamReader(stream))
+            {
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    var trimmed = line.Trim();
+                    if (string.IsNullOrEmpty(trimmed))
+                        continue;
+                    var parts = trimmed.Split('\t');
+                    if (parts.Length < 2)
+                        continue;
+
+                    // parse using invariant culture to avoid locale issues
+                    if (double.TryParse(parts[1], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var val))
+                    {
+                        if (!dic.ContainsKey(parts[0]))
+                            dic.Add(parts[0], val);
+                    }
+                }
+            }
+
+            return dic;
+        }
+
+        // If a US English lexicon was requested but only a GB lexicon was found, transform keys
+        // from common British spellings to US spellings so callers can request "en-us".
+        private static Dictionary<string, double> TransformLexiconForUS(Dictionary<string, double> source, string languageCode)
+        {
+            if (string.IsNullOrEmpty(languageCode))
+                return source;
+
+            if (!languageCode.Equals("en-us", StringComparison.OrdinalIgnoreCase) && !languageCode.StartsWith("en-us", StringComparison.OrdinalIgnoreCase))
+                return source;
+
+            var map = GetGbToUsMap();
+
+            var result = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in source)
+            {
+                var key = kv.Key;
+                var newKey = key;
+
+                // replace whole-word occurrences only
+                foreach (var m in map)
+                {
+                    try
+                    {
+                        var pattern = "\\b" + System.Text.RegularExpressions.Regex.Escape(m.Key) + "\\b";
+                        if (System.Text.RegularExpressions.Regex.IsMatch(newKey, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                        {
+                            newKey = System.Text.RegularExpressions.Regex.Replace(newKey, pattern, m.Value, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        }
+                    }
+                    catch
+                    {
+                        // ignore regex errors for odd tokens
+                    }
+                }
+
+                // prefer mapped key; if collision occurs, keep the first inserted value
+                if (!result.ContainsKey(newKey))
+                    result.Add(newKey, kv.Value);
+            }
+
+            return result;
+        }
+
+        // Return a conservative GB->US spelling map used for token-level replacements
+        private static Dictionary<string, string> GetGbToUsMap()
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "colour", "color" }, { "colours", "colors" }, { "colourful", "colorful" },
+                { "behaviour", "behavior" }, { "behaviours", "behaviors" }, { "behavioural", "behavioral" },
+                { "organise", "organize" }, { "organised", "organized" }, { "organises", "organizes" }, { "organising", "organizing" },
+                { "optimise", "optimize" }, { "optimised", "optimized" }, { "optimising", "optimizing" }, { "optimisation", "optimization" },
+                { "realise", "realize" }, { "realised", "realized" }, { "realises", "realizes" }, { "realising", "realizing" },
+                { "favour", "favor" }, { "favours", "favors" }, { "favourite", "favorite" }, { "favourites", "favorites" }, { "favourable", "favorable" },
+                { "defence", "defense" }, { "defences", "defenses" },
+                { "licence", "license" }, { "licences", "licenses" },
+                { "labour", "labor" }, { "labours", "labors" },
+                { "honour", "honor" }, { "honours", "honors" },
+                { "neighbour", "neighbor" }, { "neighbours", "neighbors" },
+                { "centre", "center" }, { "centres", "centers" },
+                { "theatre", "theater" }, { "theatres", "theaters" },
+                { "metre", "meter" }, { "metres", "meters" }, { "litre", "liter" }, { "litres", "liters" },
+                { "paediatric", "pediatric" },
+                { "tyre", "tire" }, { "tyres", "tires" },
+                { "cheque", "check" }, { "cheques", "checks" },
+                { "catalogue", "catalog" }, { "catalogues", "catalogs" },
+                { "dialogue", "dialog" }, { "dialogues", "dialogs" },
+                { "travelling", "traveling" }, { "travelled", "traveled" }, { "traveller", "traveler" }, { "travellers", "travelers" },
+                { "counsellor", "counselor" }, { "counselling", "counseling" }, { "counselled", "counseled" },
+                { "anaesthesia", "anesthesia" }, { "analogue", "analog" }, { "encyclopaedia", "encyclopedia" }, { "aeroplane", "airplane" }
+            };
+        }
+
+        // Create a line-for-line transformed lexicon file from a source lexicon file by replacing word-like tokens
+        // using the GB->US map and preserving the remainder of each line unchanged.
+        private static void CreateTransformedLexiconFile(string sourceFilePath, string targetFilePath, Dictionary<string, string> map)
+        {
+            using (var reader = new StreamReader(sourceFilePath))
+            using (var writer = new StreamWriter(targetFilePath, false, System.Text.Encoding.UTF8))
+            {
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        writer.WriteLine(line);
+                        continue;
+                    }
+
+                    var parts = line.Split('\t', 2);
+                    var token = parts[0];
+                    var rest = parts.Length > 1 ? "\t" + parts[1] : string.Empty;
+
+                    // Only transform tokens that start with a letter
+                    if (System.Text.RegularExpressions.Regex.IsMatch(token, "^\\p{L}"))
+                    {
+                        var newToken = token;
+                        foreach (var m in map)
+                        {
+                            try
+                            {
+                                var pattern = "\\b" + System.Text.RegularExpressions.Regex.Escape(m.Key) + "\\b";
+                                if (System.Text.RegularExpressions.Regex.IsMatch(newToken, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                                {
+                                    newToken = System.Text.RegularExpressions.Regex.Replace(newToken, pattern, m.Value, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                }
+                            }
+                            catch
+                            {
+                                // ignore regex errors for odd tokens
+                            }
+                        }
+
+                        writer.WriteLine(newToken + rest);
+                    }
+                    else
+                    {
+                        writer.WriteLine(line);
+                    }
+                }
             }
         }
 
@@ -86,6 +617,9 @@ namespace AnakinAnalytics
             IList<double> sentiments = new List<double>();
             IList<string> wordsAndEmoticons = sentiText.WordsAndEmoticons;
 
+            // get lexicon for requested language
+            var lexicon = GetLexiconForLanguage(languageCode);
+
             for (int i = 0; i < wordsAndEmoticons.Count; i++)
             {
                 string item = wordsAndEmoticons[i];
@@ -96,7 +630,7 @@ namespace AnakinAnalytics
                     sentiments.Add(valence);
                     continue;
                 }
-                sentiments = SentimentValence(valence, sentiText, item, i, sentiments, resources);
+                sentiments = SentimentValence(valence, sentiText, item, i, sentiments, resources, lexicon);
             }
 
             sentiments = ButCheck(wordsAndEmoticons, sentiments);
@@ -104,17 +638,17 @@ namespace AnakinAnalytics
             return ScoreValence(sentiments, input);
         }
 
-        private IList<double> SentimentValence(double valence, SentiText sentiText, string item, int i, IList<double> sentiments, SentimentResources resources)
+        private IList<double> SentimentValence(double valence, SentiText sentiText, string item, int i, IList<double> sentiments, SentimentResources resources, Dictionary<string, double> lexicon)
         {
             string itemLowerCase = item.ToLower();
-            if (!Lexicon.ContainsKey(itemLowerCase))
+            if (!lexicon.ContainsKey(itemLowerCase))
             {
                 sentiments.Add(valence);
                 return sentiments;
             }
             bool isCapDiff = sentiText.IsCapDifferential;
             IList<string> wordsAndEmoticons = sentiText.WordsAndEmoticons;
-            valence = Lexicon[itemLowerCase];
+            valence = lexicon[itemLowerCase];
             if (isCapDiff && item.IsUpper())
             {
                 if (valence > 0)
@@ -129,7 +663,7 @@ namespace AnakinAnalytics
 
             for (int startI = 0; startI < 3; startI++)
             {
-                if (i > startI && !Lexicon.ContainsKey(wordsAndEmoticons[i - (startI + 1)].ToLower()))
+                if (i > startI && !lexicon.ContainsKey(wordsAndEmoticons[i - (startI + 1)].ToLower()))
                 {
                     double s = resources.ScalarIncDec(wordsAndEmoticons[i - (startI + 1)], valence, isCapDiff);
                     if (startI == 1 && s != 0)
@@ -148,7 +682,7 @@ namespace AnakinAnalytics
                 }
             }
 
-            valence = LeastCheck(valence, wordsAndEmoticons, i, resources);
+            valence = LeastCheck(valence, wordsAndEmoticons, i, resources, lexicon);
             sentiments.Add(valence);
             return sentiments;
         }
@@ -181,9 +715,9 @@ namespace AnakinAnalytics
             return sentiments;
         }
 
-        private double LeastCheck(double valence, IList<string> wordsAndEmoticons, int i, SentimentResources resources)
+        private double LeastCheck(double valence, IList<string> wordsAndEmoticons, int i, SentimentResources resources, Dictionary<string, double> lexicon)
         {
-            if (i > 1 && !Lexicon.ContainsKey(wordsAndEmoticons[i - 1].ToLower()) &&
+            if (i > 1 && !lexicon.ContainsKey(wordsAndEmoticons[i - 1].ToLower()) &&
                 wordsAndEmoticons[i - 1].ToLower() == "least")
             {
                 if (wordsAndEmoticons[i - 2].ToLower() != "at" && wordsAndEmoticons[i - 2].ToLower() != "very")
@@ -191,7 +725,7 @@ namespace AnakinAnalytics
                     valence = valence * resources.NScalar;
                 }
             }
-            else if (i > 0 && !Lexicon.ContainsKey(wordsAndEmoticons[i-1].ToLower()) 
+            else if (i > 0 && !lexicon.ContainsKey(wordsAndEmoticons[i-1].ToLower()) 
                 && wordsAndEmoticons[i - 1].ToLower() == "least")
             {
                 valence = valence * resources.NScalar;
