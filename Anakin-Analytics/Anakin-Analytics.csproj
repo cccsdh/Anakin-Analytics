@@ -13,7 +13,8 @@
     <PackageId>AnakinAnalytics</PackageId>
     <PackageTags>sentiment;analysis;vader;valence;text;algorithm</PackageTags>
     <PackageProjectUrl>https://github.com/codingupastorm/vadersharp</PackageProjectUrl>
-    <PackageLicenseUrl>https://github.com/codingupastorm/vadersharp/blob/master/LICENSE</PackageLicenseUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/codingupastorm/vadersharp</RepositoryUrl>
     <GenerateAssemblyTitleAttribute>false</GenerateAssemblyTitleAttribute>
@@ -34,6 +35,13 @@
     <EmbeddedResource Include="vader_lexicon*.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md">
+      <Pack>true</Pack>
+      <PackagePath></PackagePath>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
