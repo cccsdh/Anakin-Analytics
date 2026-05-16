@@ -1,5 +1,7 @@
 # Anakin-Analytics
 
+![Build Status](https://github.com/cccsdh/Anakin-Analytics/actions/workflows/ci.yml/badge.svg?branch=master)
+
 Anakin-Analytics is a fork of `codingupastorm/vadersharp`, updated to target .NET 10 and extended to support multiple language sentiment configuration files simultaneously.
 
 # Getting Started
