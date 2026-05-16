@@ -5,34 +5,35 @@ namespace AnakinAnalytics
 {
     internal static class StringExtensions
     {
-        public static bool IsUpper(this string s)
+        /// <summary>
+        /// Determine if word is ALL CAPS
+        /// </summary>
+        /// <param name="word"></param>
+        public static bool IsUpper(this string word)
         {
-            if (string.IsNullOrEmpty(s))
-                return false;
-
-            var letters = s.Where(char.IsLetter).ToArray();
-            if (letters.Length == 0)
-                return false;
-
-            return letters.All(char.IsUpper);
-        }
-
-        public static string RemovePunctuation(this string s)
-        {
-            if (string.IsNullOrEmpty(s))
-                return s;
-
-            var sb = new StringBuilder(s.Length);
-            foreach (char c in s)
+            bool hasLetter = false;
+            foreach (char c in word)
             {
-                // keep apostrophes to preserve contractions; remove other punctuation
-                if (char.IsPunctuation(c) && c != '\'')
-                    continue;
-
-                sb.Append(c);
+                if (char.IsLetter(c))
+                {
+                    hasLetter = true;
+                    if (!char.IsUpper(c))
+                    {
+                        return false;
+                    }
+                }
             }
-
-            return sb.ToString();
+            return hasLetter;
         }
+
+        /// <summary>
+        /// Removes punctuation from word
+        /// </summary>
+        /// <param name="word"></param>
+        public static string RemovePunctuation(this string word)
+        {
+            return new string(word.Where(c => !char.IsPunctuation(c)).ToArray());
+        }
+
     }
 }

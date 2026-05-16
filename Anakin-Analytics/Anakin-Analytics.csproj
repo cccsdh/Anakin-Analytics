@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <Description>A sentiment analysis algorithm in C#.</Description>
@@ -35,6 +35,9 @@
     <EmbeddedResource Include="vader_lexicon*.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </EmbeddedResource>
+    <EmbeddedResource Include="Anakin-Analytics\emoji_utf8_lexicon.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
@@ -51,8 +54,24 @@
   <ItemGroup>
     <None Update="Anakin-Analytics\vader_lexicon_en-gb.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Pack>true</Pack>
+      <PackagePath>contentFiles\any\any\lexicon\</PackagePath>
+      <BuildAction>Content</BuildAction>
     </None>
-    <None Update="Anakin-Analytics\vader_lexicon_en-us.txt">
+    <None Update="Anakin-Analytics\emoji_utf8_lexicon.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Pack>true</Pack>
+      <PackagePath>contentFiles\any\any\emoji\</PackagePath>
+      <BuildAction>Content</BuildAction>
+    </None>
+  </ItemGroup>
+
+  <!-- Include ConfigStore strings and package them as contentFiles so they are copied to consumers' output directories -->
+  <ItemGroup>
+    <None Include="ConfigStore\strings\**\*.xml">
+      <Pack>true</Pack>
+      <PackagePath>contentFiles\any\any\strings\</PackagePath>
+      <BuildAction>Content</BuildAction>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>

@@ -25,13 +25,13 @@ namespace AnakinAnalytics
                     : new Dictionary<string, double>(SentimentUtils.BoosterDict, StringComparer.OrdinalIgnoreCase);
                 SpecialCaseIdioms = cfg.SpecialCaseIdioms != null
                     ? new Dictionary<string, double>(cfg.SpecialCaseIdioms, StringComparer.OrdinalIgnoreCase)
-                    : new Dictionary<string, double>(SentimentUtils.SpecialCaseIdioms, StringComparer.OrdinalIgnoreCase);
+                : new Dictionary<string, double>(SentimentUtils.SpecialCases, StringComparer.OrdinalIgnoreCase);
             }
             else
             {
                 Negations = SentimentUtils.Negate;
                 BoosterDict = new Dictionary<string, double>(SentimentUtils.BoosterDict, StringComparer.OrdinalIgnoreCase);
-                SpecialCaseIdioms = new Dictionary<string, double>(SentimentUtils.SpecialCaseIdioms, StringComparer.OrdinalIgnoreCase);
+                SpecialCaseIdioms = new Dictionary<string, double>(SentimentUtils.SpecialCases, StringComparer.OrdinalIgnoreCase);
             }
         }
 

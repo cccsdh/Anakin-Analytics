@@ -248,7 +248,15 @@ namespace AnakinAnalytics
                                 }
                             }
 
-                            return transformed;
+                            // Merge emoji lexicon entries when available
+                            try { MergeEmojiLexicon(transformed, assemblyFolder, assembly); } catch { }
+
+                        // Merge emoji lexicon entries when available
+                        try { MergeEmojiLexicon(transformed, assemblyFolder, assembly); } catch { }
+
+                try { MergeEmojiLexicon(transformed, assemblyFolder, assembly); } catch { }
+
+                return transformed;
                         }
                     }
                 }
@@ -346,7 +354,9 @@ namespace AnakinAnalytics
                         {
                             using (var stream = File.OpenRead(targetPath))
                             {
-                                return LoadLexiconFromStream(stream);
+                                var result = LoadLexiconFromStream(stream);
+                                try { MergeEmojiLexicon(result, assemblyFolder, assembly); } catch { }
+                                return result;
                             }
                         }
                         // fallback to loading the original file and transforming in-memory
@@ -356,6 +366,7 @@ namespace AnakinAnalytics
                     {
                         var loaded = LoadLexiconFromStream(stream);
                         var transformed = TransformLexiconForUS(loaded, languageCode);
+                        try { MergeEmojiLexicon(transformed, assemblyFolder, assembly); } catch { }
                         return transformed;
                     }
                 }
@@ -435,7 +446,9 @@ namespace AnakinAnalytics
                             {
                                 using (var stream = File.OpenRead(targetPath))
                                 {
-                                    return LoadLexiconFromStream(stream);
+                                    var result = LoadLexiconFromStream(stream);
+                                    try { MergeEmojiLexicon(result, assemblyFolder, assembly); } catch { }
+                                    return result;
                                 }
                             }
                         }
@@ -896,6 +909,108 @@ namespace AnakinAnalytics
             public double PosSum { get; set; }
             public double NegSum { get; set; }
             public int NeuCount { get; set; }
+        }
+        
+        // Merge emoji lexicon entries (if present) into the provided lexicon dictionary.
+        // Emoji file format: token<TAB>valueOrDescription
+        // If the value is numeric it will be used. Otherwise a small built-in mapping
+        // maps common positive/negative emojis to heuristic scores.
+        private static void MergeEmojiLexicon(Dictionary<string, double> lexicon, string assemblyFolder, Assembly assembly)
+        {
+            if (lexicon == null) return;
+
+            // try embedded resource first
+            try
+            {
+                var resName = assembly.GetManifestResourceNames()
+                    .FirstOrDefault(n => n.EndsWith("emoji_utf8_lexicon.txt", StringComparison.OrdinalIgnoreCase));
+                if (resName != null)
+                {
+                    using (var stream = assembly.GetManifestResourceStream(resName))
+                    {
+                        if (stream != null)
+                        {
+                            MergeEmojiFromStream(lexicon, stream);
+                            return;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            // try files next to assembly or current directory
+            var candidates = new[] { Path.Combine(assemblyFolder, "emoji_utf8_lexicon.txt"), Path.Combine(Directory.GetCurrentDirectory(), "emoji_utf8_lexicon.txt") };
+            foreach (var c in candidates)
+            {
+                if (File.Exists(c))
+                {
+                    try
+                    {
+                        using (var stream = File.OpenRead(c))
+                        {
+                            MergeEmojiFromStream(lexicon, stream);
+                        }
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                    return;
+                }
+            }
+        }
+
+        private static void MergeEmojiFromStream(Dictionary<string, double> lexicon, Stream stream)
+        {
+            using (var reader = new StreamReader(stream))
+            {
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    var trimmed = line?.Trim();
+                    if (string.IsNullOrEmpty(trimmed))
+                        continue;
+                    var parts = trimmed.Split('\t');
+                    if (parts.Length < 1) continue;
+                    var token = parts[0];
+                    if (string.IsNullOrEmpty(token)) continue;
+
+                    // Do not overwrite existing lexicon values
+                    if (lexicon.ContainsKey(token)) continue;
+
+                    double val;
+                    if (parts.Length > 1 && double.TryParse(parts[1], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out val))
+                    {
+                        lexicon[token] = val;
+                    }
+                    else
+                    {
+                        // apply heuristic mapping for common emojis
+                        lexicon[token] = GetEmojiDefaultValence(token);
+                    }
+                }
+            }
+        }
+
+        private static double GetEmojiDefaultValence(string emoji)
+        {
+            // Conservative default scores; these are heuristics for common emojis
+            // and are intentionally modest in magnitude.
+            var positive = new HashSet<string>
+            {
+                "😀","😁","😂","🤣","😃","😄","😊","😎","😉","😍","😘","😇","🙂","🤗","🤩","🥰","😸","😺","😻"
+            };
+            var negative = new HashSet<string>
+            {
+                "😢","😭","😞","😟","😠","😡","🤬","😒","😔","😩","😫","😖","👿","💀","☠","😾"
+            };
+
+            if (positive.Contains(emoji)) return 2.0;
+            if (negative.Contains(emoji)) return -2.0;
+            return 0.0;
         }
     
     }

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, main ]
   pull_request:
-    branches: [ master ]
+    branches: [ master, main ]
 
 jobs:
   build:
@@ -22,30 +22,5 @@ jobs:
       - name: Test
         run: dotnet test --configuration Release --no-build --verbosity normal
 
-  pack:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: '10.0.x'
-      - name: Restore
-        run: dotnet restore
-      - name: Build library
-        run: dotnet build Anakin-Analytics/Anakin-Analytics.csproj --configuration Release --no-restore
-
-      - name: Compute package version
-        run: echo "PACKAGE_VERSION=$(date -u +%Y.%m.%d).${{ github.run_number }}" >> $GITHUB_ENV
-
-      - name: Pack library
-        run: |
-          echo "Packing version: $PACKAGE_VERSION"
-          dotnet pack Anakin-Analytics/Anakin-Analytics.csproj --configuration Release --output ./artifacts -p:PackageVersion=$PACKAGE_VERSION
-
-      - name: Publish NuGet package
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-        run: |
-          dotnet nuget push "./artifacts/*.nupkg" --api-key $NUGET_API_KEY --source "https://api.nuget.org/v3/index.json" --skip-duplicate
+# NOTE: Packaging and publishing were removed from this CI workflow so releases are intentional.
+# Use the manual workflow `.github/workflows/manual-pack-publish.yml` to pack and publish NuGet packages.

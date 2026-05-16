@@ -6,6 +6,8 @@ Anakin-Analytics is a fork of "VADER (Valence Aware Dictionary and sEntiment Rea
 
 Previously VADER was only available in python (https://github.com/cjhutto/vaderSentiment), and was then ported to C# in https://github.com/codingupastorm/vadersharp (this is a fork from these repos).
 
+This project also referenced and incorporated code from the fork at https://github.com/BobLd/vadersharp.
+
 ## Citation Information ([source](https://github.com/cjhutto/vaderSentiment#citation-information))
 If you use either the dataset or any of the VADER sentiment analysis tools (VADER sentiment lexicon or Python code for rule-based sentiment analysis engine) in your research, please cite the above paper. For example:  
 

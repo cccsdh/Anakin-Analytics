@@ -1,0 +1,66 @@
+name: "Manual Pack and Publish"
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_version:
+        description: 'Package version to publish (e.g. 1.2.3)'
+        required: false
+      skip_push:
+        description: 'If true, only pack and upload artifact; do not push to nuget.org'
+        required: false
+        default: 'false'
+
+jobs:
+  pack-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Compute package version
+        id: pkgver
+        run: |
+          if [ -n "${{ inputs.package_version }}" ]; then
+            echo "PACKAGE_VERSION=${{ inputs.package_version }}" >> $GITHUB_ENV
+          else
+            # Use date-based version if not provided
+            V="$(date -u +%Y.%m.%d).${GITHUB_RUN_NUMBER}"
+            echo "PACKAGE_VERSION=$V" >> $GITHUB_ENV
+          fi
+          echo "Determined package version: $PACKAGE_VERSION"
+
+      - name: Pack library
+        run: |
+          mkdir -p ./artifacts
+          echo "Packing version: $PACKAGE_VERSION"
+          dotnet pack Anakin-Analytics/Anakin-Analytics.csproj --configuration Release --output ./artifacts -p:PackageVersion=$PACKAGE_VERSION
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: anakin-nuget
+          path: artifacts/*.nupkg
+
+      - name: Publish to nuget.org
+        if: ${{ inputs.skip_push != 'true' }}
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          for nupkg in artifacts/*.nupkg; do
+            echo "Pushing $nupkg"
+            dotnet nuget push "$nupkg" --api-key $NUGET_API_KEY --source "https://api.nuget.org/v3/index.json" --skip-duplicate
+          done
+
+# This workflow is manual to allow intentional versioning and controlled publishing.

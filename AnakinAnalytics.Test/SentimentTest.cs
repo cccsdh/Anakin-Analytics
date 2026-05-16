@@ -34,6 +34,35 @@ namespace AnakinAnalytics.Test
 
         }
         [TestMethod]
+        public void VeryCleanNoProblem()
+        {
+            SentimentIntensityAnalyzer analyzer = new SentimentIntensityAnalyzer();
+
+            var veryCleanTest = analyzer.PolarityScores("Very clean, no problem");
+            Assert.AreEqual(veryCleanTest.Negative, 0);
+            Assert.AreEqual(veryCleanTest.Neutral, 0.128);
+            Assert.AreEqual(veryCleanTest.Positive, 0.872);
+            Assert.AreEqual(veryCleanTest.Compound, 0.6997);
+        }
+
+        [TestMethod]
+        public void UpperCaseTest()
+        {
+            SentimentIntensityAnalyzer analyzer = new SentimentIntensityAnalyzer();
+
+            var notBadTest = analyzer.PolarityScores("not bad");
+            Assert.AreEqual(notBadTest.Negative, 0);
+            Assert.AreEqual(notBadTest.Neutral, 0.26);
+            Assert.AreEqual(notBadTest.Positive, 0.74);
+            Assert.AreEqual(notBadTest.Compound, 0.431);
+
+            var NotBadTest = analyzer.PolarityScores("Not bad");
+            Assert.AreEqual(NotBadTest.Negative, 0);
+            Assert.AreEqual(NotBadTest.Neutral, 0.26);
+            Assert.AreEqual(NotBadTest.Positive, 0.74);
+            Assert.AreEqual(NotBadTest.Compound, 0.431);
+        }
+        [TestMethod]
         public void MatchPythonTestForUs()
         {
             SentimentIntensityAnalyzer analyzer = new SentimentIntensityAnalyzer();

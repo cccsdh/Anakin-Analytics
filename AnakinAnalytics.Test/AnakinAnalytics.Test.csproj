@@ -9,6 +9,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.0.0" />
     <PackageReference Include="MSTest.TestAdapter" Version="3.0.2" />
     <PackageReference Include="MSTest.TestFramework" Version="3.0.2" />
+    <!-- xUnit support -->
   </ItemGroup>
 
   <ItemGroup>
@@ -25,6 +26,30 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="GroundTruth\amazonReviewSnippets_GroundTruth_vader-3.3.2.tsv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="GroundTruth\amazonReviewSnippets_GroundTruth_vader.tsv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="GroundTruth\movieReviewSnippets_GroundTruth_vader-3.3.2.tsv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="GroundTruth\movieReviewSnippets_GroundTruth_vader.tsv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="GroundTruth\nytEditorialSnippets_GroundTruth_vader-3.3.2.tsv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="GroundTruth\nytEditorialSnippets_GroundTruth_vader.tsv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="GroundTruth\tweets_GroundTruth_vader-3.3.2.tsv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="GroundTruth\tweets_GroundTruth_vader.tsv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="strings\en-gb.xml">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
