@@ -16,7 +16,13 @@ namespace AnakinAnalytics
     public class ConfigStore
     {
 
-        // Global debug logging flag read from appsettings.json (AnakinAnalytics.DebugLogging)
+        /// <summary>
+        /// When true, diagnostic logging is enabled and the analyzer will write
+        /// debug information (prefixed with "ANAKIN_DEBUG:") to the test host
+        /// console. This value is read once from <c>appsettings.json</c> under
+        /// the key <c>AnakinAnalytics.DebugLogging</c> when <see cref="CreateConfig"/>
+        /// is first called.
+        /// </summary>
         public static bool DebugLoggingEnabled { get; private set; } = false;
 
         // Instance access unnecessary; use static DebugLoggingEnabled where needed.
