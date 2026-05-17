@@ -1,0 +1,38 @@
+name: Manual Testing
+
+# Manual workflow to run tests on-demand
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: 'Build configuration'
+        required: false
+        default: 'Release'
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 'latest'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration ${{ github.event.inputs.configuration }}
+
+      - name: Run tests
+        run: |
+          dotnet test --no-build --configuration ${{ github.event.inputs.configuration }} --logger "trx;LogFileName=TestResults.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestResults
+          path: TestResults.trx

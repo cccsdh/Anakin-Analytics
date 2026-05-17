@@ -29,8 +29,80 @@ namespace AnakinAnalytics
 
             var normalized = languageCode.ToLowerInvariant();
 
+            // Remove any existing cached entry so that if lexicon-loading logic
+            // was updated (for example to normalize keys) we will reload the
+            // lexicon rather than returning a previously cached dictionary that
+            // may contain unnormalized keys.
+            try
+            {
+                LexiconCache.TryRemove(normalized, out _);
+            }
+            catch
+            {
+                // ignore any concurrency issues
+            }
+
             var lazy = LexiconCache.GetOrAdd(normalized, _ => new Lazy<Dictionary<string, double>>(() => LoadLexicon(normalized), isThreadSafe: true));
-            return lazy.Value;
+            var lex = lazy.Value;
+
+            // If the loaded lexicon is empty, attempt an explicit file-based
+            // lookup from the test host base directory and nearby subfolders.
+            if (lex == null || lex.Count == 0)
+            {
+                try
+                {
+                    var assembly = typeof(SentimentIntensityAnalyzer).Assembly;
+                    var assemblyFolder = Path.GetDirectoryName(assembly.Location) ?? AppDomain.CurrentDomain.BaseDirectory ?? Directory.GetCurrentDirectory();
+
+                    var candidates = new List<string> { $"vader_lexicon_{normalized}.txt" };
+                    var langPart = languageCode.Split('-')[0];
+                    if (!string.Equals(langPart, languageCode, StringComparison.OrdinalIgnoreCase))
+                        candidates.Add($"vader_lexicon_{langPart}.txt");
+                    candidates.Add("vader_lexicon.txt");
+
+                    foreach (var fileName in candidates)
+                    {
+                        string filePath = Path.Combine(assemblyFolder, fileName);
+                        if (!File.Exists(filePath))
+                        {
+                            // search subfolders up to depth 3
+                            var found = FindFileInSubfolders(assemblyFolder, fileName, maxDepth: 3);
+                            if (!string.IsNullOrEmpty(found))
+                                filePath = found;
+                        }
+
+                        if (File.Exists(filePath))
+                        {
+                            try
+                            {
+                                using (var stream = File.OpenRead(filePath))
+                                {
+                                    var loaded = LoadLexiconFromStream(stream);
+                                    var transformed = TransformLexiconForUS(loaded, languageCode);
+                                    try { MergeEmojiLexicon(transformed, assemblyFolder, assembly); } catch { }
+
+                                    if (transformed != null && transformed.Count > 0)
+                                    {
+                                        // Update cache so subsequent calls use this lexicon
+                                        LexiconCache[normalized] = new Lazy<Dictionary<string, double>>(() => transformed, isThreadSafe: true);
+                                        return transformed;
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // ignore and continue trying other candidates
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // swallow failures and fall back to whatever we have
+                }
+            }
+
+            return lex;
         }
 
         // Search for a file in immediate subdirectories (up to maxDepth levels). Returns full path if found; otherwise null.
@@ -116,10 +188,15 @@ namespace AnakinAnalytics
                 if (parts.Length < 2)
                     continue;
 
+                // Normalize token by trimming surrounding whitespace and stray quotes so keys
+                // in the lexicon do not include enclosing '"' or '\'' characters which can
+                // appear in some transformed lexicon sources.
+                var key = parts[0].Trim().Trim('"', '\'');
+
                 if (double.TryParse(parts[1], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var val))
                 {
-                    if (!dic.ContainsKey(parts[0]))
-                        dic.Add(parts[0], val);
+                    if (!dic.ContainsKey(key))
+                        dic.Add(key, val);
                 }
             }
             return dic;
@@ -250,11 +327,6 @@ namespace AnakinAnalytics
 
                             // Merge emoji lexicon entries when available
                             try { MergeEmojiLexicon(transformed, assemblyFolder, assembly); } catch { }
-
-                        // Merge emoji lexicon entries when available
-                        try { MergeEmojiLexicon(transformed, assemblyFolder, assembly); } catch { }
-
-                try { MergeEmojiLexicon(transformed, assemblyFolder, assembly); } catch { }
 
                 return transformed;
                         }
@@ -479,10 +551,15 @@ namespace AnakinAnalytics
                         continue;
 
                     // parse using invariant culture to avoid locale issues
+                    // Normalize token by trimming surrounding whitespace and stray quotes so keys
+                    // in the lexicon do not include enclosing '"' or '\'' characters which can
+                    // appear in some transformed lexicon sources.
+                    var key = parts[0].Trim().Trim('"', '\'');
+
                     if (double.TryParse(parts[1], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var val))
                     {
-                        if (!dic.ContainsKey(parts[0]))
-                            dic.Add(parts[0], val);
+                        if (!dic.ContainsKey(key))
+                            dic.Add(key, val);
                     }
                 }
             }
@@ -634,6 +711,21 @@ namespace AnakinAnalytics
             // get lexicon for requested language
             var lexicon = GetLexiconForLanguage(languageCode);
 
+            // Diagnostic logging (enabled via appsettings.json AnakinAnalytics.DebugLogging)
+            try
+            {
+                if (ConfigStore.DebugLoggingEnabled)
+                {
+                    var baseDir = AppDomain.CurrentDomain.BaseDirectory ?? Directory.GetCurrentDirectory();
+                    Console.WriteLine($"ANAKIN_DEBUG: BaseDir={baseDir}, Language={languageCode}, LexiconCount={(lexicon?.Count ?? 0)}, WordsAndEmoticonsCount={wordsAndEmoticons.Count}");
+                    Console.WriteLine($"ANAKIN_DEBUG: WordsAndEmoticons=[{string.Join(",", wordsAndEmoticons)}]");
+                }
+            }
+            catch
+            {
+                // swallow diagnostics failures
+            }
+
             for (int i = 0; i < wordsAndEmoticons.Count; i++)
             {
                 string item = wordsAndEmoticons[i];
@@ -654,7 +746,18 @@ namespace AnakinAnalytics
 
         private IList<double> SentimentValence(double valence, SentiText sentiText, string item, int i, IList<double> sentiments, SentimentResources resources, Dictionary<string, double> lexicon)
         {
-            string itemLowerCase = item.ToLower();
+            // Normalize token for lexicon lookup: trim surrounding whitespace and stray
+            // quotes so tokens like '"beating"' match the lexicon key 'beating'.
+            string itemLowerCase = item?.Trim().Trim('"', '\'').ToLower() ?? string.Empty;
+            // Diagnostic: emit token/lookup details when enabled via appsettings.json
+            try
+            {
+                if (ConfigStore.DebugLoggingEnabled)
+                {
+                    Console.WriteLine($"ANAKIN_DEBUG: SentimentValence: item='{item}', normalized='{itemLowerCase}', lexiconCount={(lexicon?.Count ?? 0)}, contains={lexicon != null && lexicon.ContainsKey(itemLowerCase)}");
+                }
+            }
+            catch { }
             if (!lexicon.ContainsKey(itemLowerCase))
             {
                 sentiments.Add(valence);
@@ -786,13 +889,20 @@ namespace AnakinAnalytics
 
         private double IdiomsCheck(double valence, IList<string> wordsAndEmoticons, int i, SentimentResources resources)
         {
-            var oneZero = string.Concat(wordsAndEmoticons[i - 1], " ", wordsAndEmoticons[i]);
-            var twoOneZero = string.Concat(wordsAndEmoticons[i - 2], " ", wordsAndEmoticons[i - 1], " ", wordsAndEmoticons[i]);
-            var twoOne = string.Concat(wordsAndEmoticons[i - 2], " ", wordsAndEmoticons[i - 1]);
-            var threeTwoOne = string.Concat(wordsAndEmoticons[i - 3], " ", wordsAndEmoticons[i - 2], " ", wordsAndEmoticons[i - 1]);
-            var threeTwo = string.Concat(wordsAndEmoticons[i - 3], " ", wordsAndEmoticons[i - 2]);
-            
-            string[] sequences = {oneZero, twoOneZero, twoOne, threeTwoOne, threeTwo};
+            // Normalize tokens for idiom matching (trim surrounding quotes/whitespace)
+            // Trim a wider set of surrounding punctuation and common Unicode quotation marks
+            var trimChars = new char[] { '"', '\'', '\u2018', '\u2019', '\u201C', '\u201D', '“', '”', '‘', '’', '(', ')', '[', ']', '{', '}', '.', ',', ':', ';', '!' , '?', ' ' };
+            Func<string, string> normalize = s => (s ?? string.Empty).Trim(trimChars).Trim();
+
+            var tokens = wordsAndEmoticons.Select(t => normalize(t)).ToArray();
+
+            var oneZero = string.Concat(tokens[i - 1], " ", tokens[i]);
+            var twoOneZero = string.Concat(tokens[i - 2], " ", tokens[i - 1], " ", tokens[i]);
+            var twoOne = string.Concat(tokens[i - 2], " ", tokens[i - 1]);
+            var threeTwoOne = string.Concat(tokens[i - 3], " ", tokens[i - 2], " ", tokens[i - 1]);
+            var threeTwo = string.Concat(tokens[i - 3], " ", tokens[i - 2]);
+
+            string[] sequences = { oneZero, twoOneZero, twoOne, threeTwoOne, threeTwo };
 
             foreach (var seq in sequences)
             {
@@ -979,6 +1089,10 @@ namespace AnakinAnalytics
                     if (string.IsNullOrEmpty(token)) continue;
 
                     // Do not overwrite existing lexicon values
+                    // Normalize token by trimming surrounding whitespace and stray quotes so keys
+                    // do not include enclosing '"' or '\'' characters.
+                    token = token.Trim().Trim('"', '\'');
+
                     if (lexicon.ContainsKey(token)) continue;
 
                     double val;

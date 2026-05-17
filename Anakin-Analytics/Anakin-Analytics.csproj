@@ -64,6 +64,9 @@
       <PackagePath>contentFiles\any\any\emoji\</PackagePath>
       <BuildAction>Content</BuildAction>
     </None>
+    <None Update="Anakin-Analytics\vader_lexicon_en-us.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <!-- Include ConfigStore strings and package them as contentFiles so they are copied to consumers' output directories -->

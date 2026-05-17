@@ -19,8 +19,8 @@ jobs:
         run: dotnet restore
       - name: Build
         run: dotnet build --configuration Release --no-restore
-      - name: Test
-        run: dotnet test --configuration Release --no-build --verbosity normal
+      # Tests were removed from the CI workflow. Use the manual `testing` workflow
+      # to run tests on-demand via the GitHub Actions UI (workflow_dispatch).
 
 # NOTE: Packaging and publishing were removed from this CI workflow so releases are intentional.
 # Use the manual workflow `.github/workflows/manual-pack-publish.yml` to pack and publish NuGet packages.

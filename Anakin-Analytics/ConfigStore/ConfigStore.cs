@@ -16,6 +16,11 @@ namespace AnakinAnalytics
     public class ConfigStore
     {
 
+        // Global debug logging flag read from appsettings.json (AnakinAnalytics.DebugLogging)
+        public static bool DebugLoggingEnabled { get; private set; } = false;
+
+        // Instance access unnecessary; use static DebugLoggingEnabled where needed.
+
         private static readonly Dictionary<string, ConfigStore> configs = new Dictionary<string, ConfigStore>(StringComparer.OrdinalIgnoreCase);
         private static bool configsLoaded = false;
 
@@ -48,6 +53,28 @@ namespace AnakinAnalytics
         {
             if (!configsLoaded)
             {
+                // Read debug logging flag from appsettings.json (if present) before loading configs
+                try
+                {
+                    string baseDir = AppDomain.CurrentDomain.BaseDirectory ?? Directory.GetCurrentDirectory();
+                    string appsettingsPath = Path.Combine(baseDir, "appsettings.json");
+                    if (File.Exists(appsettingsPath))
+                    {
+                        var json = JObject.Parse(File.ReadAllText(appsettingsPath));
+                        var vs = json["AnakinAnalytics"] as JObject;
+                        if (vs != null)
+                        {
+                            var dbg = vs.Value<bool?>("DebugLogging");
+                            if (dbg.HasValue)
+                                DebugLoggingEnabled = dbg.Value;
+                        }
+                    }
+                }
+                catch
+                {
+                    // ignore any errors reading appsettings
+                }
+
                 LoadAllConfigs();
             }
 
@@ -262,13 +289,33 @@ namespace AnakinAnalytics
         /// <param name="root">Root element of XML document</param>
         private void LoadIdioms(XElement root)
         {
-            SpecialCaseIdioms = new Dictionary<string, double>();
+            // Load idioms from XML, but preserve any built-in defaults defined in
+            // SentimentUtils.SpecialCases so that missing entries in the XML do
+            // not unintentionally remove important special-case idioms.
+            SpecialCaseIdioms = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
             var nodes = root.Descendants(XName.Get("idiom"));
             double value;
             foreach (var n in nodes)
             {
                 value = double.Parse(n.Attribute(XName.Get("value")).Value);
-                SpecialCaseIdioms.Add(n.Value, value);
+                SpecialCaseIdioms[n.Value] = value;
+            }
+
+            // Merge any defaults from SentimentUtils.SpecialCases that are not
+            // present in the loaded XML to maintain compatibility with
+            // upstream vader behavior (e.g. "beating heart").
+            try
+            {
+                foreach (var kv in SentimentUtils.SpecialCases)
+                {
+                    if (!SpecialCaseIdioms.ContainsKey(kv.Key))
+                        SpecialCaseIdioms[kv.Key] = kv.Value;
+                }
+            }
+            catch
+            {
+                // if SentimentUtils.SpecialCases is unavailable for any reason,
+                // silently continue using the XML-provided idioms.
             }
         }
 
